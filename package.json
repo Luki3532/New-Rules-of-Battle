@@ -1,0 +1,40 @@
+{
+  "name": "new-rules-of-battle",
+  "version": "1.0.0",
+  "description": "Hunt: Showdown Death Tracker - Track your deaths and K/D ratio",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "author": "Lucas Carpenter",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.1.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.newrulesofbattle.app",
+    "productName": "New Rules of Battle",
+    "win": {
+      "target": "portable",
+      "icon": "build/icon.ico"
+    },
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "index.html",
+      "styles.css",
+      "script.js",
+      "main.js"
+    ],
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "portable": {
+      "artifactName": "NewRulesOfBattle-Portable.exe"
+    }
+  }
+}

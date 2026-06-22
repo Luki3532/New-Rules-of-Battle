@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Rules of Battle - Hunt Showdown Death Tracker</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Almendra:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="background-overlay"></div>
+    
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="skull-divider"></div>
+            <h1 class="title">NEW RULES OF BATTLE</h1>
+            <p class="subtitle">Death Ledger & Statistics</p>
+            <div class="skull-divider"></div>
+        </header>
+
+        <!-- Profile Management -->
+        <section class="profile-section">
+            <div class="profile-bar">
+                <div class="profile-tabs" id="profileTabs">
+                    <!-- Profiles will be dynamically added here -->
+                </div>
+                <button class="btn-add-profile" id="addProfileBtn">+ NEW HUNTER</button>
+            </div>
+        </section>
+
+        <!-- Statistics Dashboard -->
+        <section class="stats-section">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">☠</div>
+                    <div class="stat-value" id="totalDeaths">0</div>
+                    <div class="stat-label">Total Deaths</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                            <circle cx="12" cy="12" r="6" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                            <circle cx="12" cy="12" r="2" fill="currentColor"/>
+                            <line x1="12" y1="2" x2="12" y2="5" stroke="currentColor" stroke-width="1.5"/>
+                            <line x1="12" y1="19" x2="12" y2="22" stroke="currentColor" stroke-width="1.5"/>
+                            <line x1="2" y1="12" x2="5" y2="12" stroke="currentColor" stroke-width="1.5"/>
+                            <line x1="19" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="1.5"/>
+                        </svg>
+                    </div>
+                    <div class="stat-value" id="topCause">None</div>
+                    <div class="stat-label">Most Common Demise</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">⚰</div>
+                    <div class="stat-value" id="deathStreak">0</div>
+                    <div class="stat-label">Current Streak</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Death Chart -->
+        <section class="chart-section" id="deathChartSection" style="display: none;">
+            <h2 class="section-title">Death Timeline</h2>
+            
+            <div class="chart-controls">
+                <div class="chart-control-group">
+                    <label class="control-label">Death Causes to Compare:</label>
+                    <div class="death-cause-toggles" id="deathCauseToggles">
+                        <!-- Death cause checkboxes will be added here -->
+                    </div>
+                </div>
+                
+                <div class="chart-control-group">
+                    <label class="control-label">Compare Profiles:</label>
+                    <div class="profile-compare" id="profileCompare">
+                        <!-- Profile checkboxes will be added here -->
+                    </div>
+                </div>
+            </div>
+            
+            <canvas id="deathChart"></canvas>
+        </section>
+
+        <!-- K/D Timeline -->
+        <section class="chart-section" id="kdChartSection">
+            <h2 class="section-title">K/D Timeline</h2>
+            
+            <div class="chart-controls">
+                <div class="chart-control-group">
+                    <label class="control-label">Compare Profiles:</label>
+                    <div class="profile-compare" id="kdProfileCompare">
+                        <!-- Profile checkboxes for K/D will be added here -->
+                    </div>
+                </div>
+            </div>
+            
+            <canvas id="kdChart"></canvas>
+        </section>
+
+        <!-- K/D Entry Form -->
+        <section class="kd-form-section">
+            <h2 class="section-title">Record K/D</h2>
+            <div class="kd-form">
+                <div class="form-group">
+                    <label for="kdRatio">K/D Ratio:</label>
+                    <input type="text" id="kdRatio" inputmode="decimal" value="1.00" placeholder="1.00">
+                </div>
+                <button class="btn-primary" id="recordKDBtn">RECORD K/D</button>
+            </div>
+        </section>
+
+        <!-- Death Entry Form -->
+        <section class="death-form-section">
+            <h2 class="section-title">Record a Death</h2>
+            <div class="death-form">
+                <div class="form-group">
+                    <div class="encounters-header">
+                        <label>How did <span id="currentHunterName">the hunter</span> meet their end?</label>
+                        <button class="btn-lock-encounters" id="lockEncountersBtn" title="Click to unlock and edit encounters">🔒 Locked</button>
+                    </div>
+                    <div class="death-causes" id="deathCauses">
+                        <!-- Death causes will be populated here -->
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="customCause">Add Custom Encounter:</label>
+                    <input type="text" id="customCause" placeholder="e.g., Ambushed by Immolator...">
+                    <button class="btn-secondary" id="addCustomCause">Add to List</button>
+                </div>
+
+                <div class="form-group">
+                    <label for="deathNotes">Death Notes (Optional):</label>
+                    <textarea id="deathNotes" placeholder="Describe the circumstances of this unfortunate demise..." rows="3"></textarea>
+                </div>
+
+                <button class="btn-primary" id="recordDeathBtn">RECORD DEATH</button>
+            </div>
+        </section>
+
+    </div>
+
+    <!-- Modal for Adding Profile -->
+    <div class="modal" id="profileModal">
+        <div class="modal-content">
+            <h3>Create New Hunter Profile</h3>
+            <input type="text" id="newProfileName" placeholder="Enter hunter name...">
+            <div class="modal-buttons">
+                <button class="btn-primary" id="confirmProfileBtn">Create</button>
+                <button class="btn-secondary" id="cancelProfileBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Renaming Profile -->
+    <div class="modal" id="renameModal">
+        <div class="modal-content">
+            <h3>Rename Hunter</h3>
+            <input type="text" id="renameProfileName" placeholder="Enter new name...">
+            <div class="modal-buttons">
+                <button class="btn-primary" id="confirmRenameBtn">Rename</button>
+                <button class="btn-secondary" id="cancelRenameBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Delete Confirmation -->
+    <div class="modal" id="deleteModal">
+        <div class="modal-content">
+            <h3>Confirm Deletion</h3>
+            <p id="deleteMessage">Are you sure?</p>
+            <div class="modal-buttons">
+                <button class="btn-danger" id="confirmDeleteBtn">Delete</button>
+                <button class="btn-secondary" id="cancelDeleteBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Profile Switcher (Fixed Bottom Left) -->
+    <div class="quick-profile-switcher" id="quickProfileSwitcher">
+        <!-- Profile icons will be added here by JavaScript -->
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
