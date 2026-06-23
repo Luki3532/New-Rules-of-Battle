@@ -282,14 +282,14 @@ New Rules of Battle/
 
 ## Critical Notes
 
-⚠️ **Never Use:**
+**Never Use:**
 - React, Vue, Angular, or any framework
 - jQuery or DOM manipulation libraries
 - Chart.js, D3, or chart libraries
 - axios, fetch wrappers
 - date-fns, moment.js (use native Date)
 
-✅ **Always Use:**
+**Always Use:**
 - Vanilla JavaScript
 - Native Canvas API
 - CSS Variables for theming
@@ -297,7 +297,7 @@ New Rules of Battle/
 - Custom modals instead of alert/confirm
 - Hunt Showdown aesthetic
 
-🎨 **Design Philosophy:**
+**Design Philosophy:**
 This is a Hunt: Showdown fan tool. The aesthetic MUST match the game:
 - Dark, moody, Western/Gothic
 - Parchment textures and aged paper feel
