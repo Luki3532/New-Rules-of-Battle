@@ -21,7 +21,47 @@ class DeathTracker {
             'AI killed me',
             'Explosive',
             'Melee fight',
-            'Team wipe'
+            'Team wipe',
+            'in bushes',
+            'staying still',
+            'walking',
+            'running',
+            'crouching',
+            'wrong weapon',
+            'red barrel',
+            'suicide',
+            'boss',
+            'zombie light',
+            'zombie heavy',
+            'pinched',
+            'sniped',
+            'close quarters',
+            'medium range'
+        ];
+        this.defaultGuns = [
+            'Winfield',
+            'Sparks',
+            'Mosin',
+            'Lebel',
+            'Vetterli',
+            'Martini-Henry',
+            'Springfield',
+            'Nitro Express',
+            'Caldwell Rival',
+            'Specter',
+            'Crown & King',
+            'Romero',
+            'Dolch',
+            'Uppercut',
+            'Pax',
+            'Conversion',
+            'Nagant',
+            'Bornheim',
+            'Crossbow',
+            'Bow',
+            'Bomb Lance',
+            'Melee',
+            'Unknown'
         ];
         
         this.init();
@@ -40,16 +80,29 @@ class DeathTracker {
             this.currentProfile = this.profiles[0].name;
         }
 
-        // Ensure all profiles have kdRecords
+        // Ensure all profiles have kdRecords and gunDeaths
         this.profiles.forEach(profile => {
             if (!profile.kdRecords) {
                 profile.kdRecords = [];
+            }
+            if (!profile.gunDeaths) {
+                profile.gunDeaths = [];
+            }
+            if (!profile.customGuns) {
+                profile.customGuns = [];
+            }
+            if (!profile.gunOrder) {
+                profile.gunOrder = [...this.defaultGuns];
+            }
+            if (!profile.removedGuns) {
+                profile.removedGuns = [];
             }
         });
 
         this.renderProfiles();
         this.renderQuickProfileSwitcher();
         this.renderDeathCauses();
+        this.renderGuns();
         this.updateStats();
         this.renderDeathCauseToggles();
         this.renderProfileCompare();
@@ -68,6 +121,10 @@ class DeathTracker {
             causeOrder: [...this.defaultCauses],
             removedCauses: [],
             kdRecords: [], // K/D history
+            gunDeaths: [], // Gun death history
+            customGuns: [],
+            gunOrder: [...this.defaultGuns],
+            removedGuns: [],
             created: new Date().toISOString()
         };
         this.profiles.push(profile);
@@ -129,6 +186,10 @@ class DeathTracker {
 
         // Update current hunter name in form
         document.getElementById('currentHunterName').textContent = this.currentProfile;
+        const gunHunterName = document.getElementById('currentHunterNameGun');
+        if (gunHunterName) {
+            gunHunterName.textContent = this.currentProfile;
+        }
     }
 
     renderQuickProfileSwitcher() {
@@ -159,6 +220,8 @@ class DeathTracker {
         localStorage.setItem('currentProfile', profileName);
         this.renderProfiles();
         this.renderQuickProfileSwitcher();
+        this.renderDeathCauses();
+        this.renderGuns();
         this.updateStats();
         this.updateChartVisibility();
         this.renderProfileCompare();
@@ -1025,6 +1088,255 @@ class DeathTracker {
         return result;
     }
 
+    // ===== GUN TRACKING METHODS =====
+
+    renderGuns() {
+        const gunsContainer = document.getElementById('gunList');
+        if (!gunsContainer) return;
+        
+        gunsContainer.innerHTML = '';
+
+        const profile = this.getCurrentProfile();
+        if (!profile.gunOrder) {
+            profile.gunOrder = [...this.defaultGuns, ...(profile.customGuns || [])];
+        }
+        if (!profile.removedGuns) {
+            profile.removedGuns = [];
+        }
+
+        const isGunsLocked = localStorage.getItem('gunsLocked') !== 'false';
+        const allGuns = profile.gunOrder.filter(gun => !profile.removedGuns.includes(gun));
+        const customGuns = profile.customGuns || [];
+
+        allGuns.forEach((gun, index) => {
+            const isCustom = customGuns.includes(gun);
+            const item = document.createElement('div');
+            item.className = 'death-cause-item';
+            item.draggable = !isGunsLocked;
+            item.dataset.gun = gun;
+            
+            if (!isGunsLocked) {
+                item.classList.add('unlocked');
+            }
+
+            item.innerHTML = `
+                ${!isGunsLocked ? '<div class="drag-handle" title="Drag to reorder">⋮⋮</div>' : ''}
+                <input type="checkbox" id="gun-${index}" value="${gun}">
+                <label for="gun-${index}">${gun}</label>
+                ${!isGunsLocked ? `<button class="btn-remove-cause" data-gun="${gun}" title="Remove gun">×</button>` : ''}
+            `;
+            
+            const checkbox = item.querySelector('input');
+            
+            // Make entire item clickable
+            item.addEventListener('click', (e) => {
+                if (e.target.classList.contains('btn-remove-cause')) return;
+                if (!isGunsLocked && e.target.classList.contains('drag-handle')) return;
+                
+                checkbox.checked = !checkbox.checked;
+                if (checkbox.checked) {
+                    item.classList.add('selected');
+                } else {
+                    item.classList.remove('selected');
+                }
+            });
+
+            if (!isGunsLocked) {
+                const deleteBtn = item.querySelector('.btn-remove-cause');
+                deleteBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.removeGun(gun, isCustom);
+                });
+
+                item.addEventListener('dragstart', (e) => this.handleGunDragStart(e));
+                item.addEventListener('dragover', (e) => this.handleGunDragOver(e));
+                item.addEventListener('drop', (e) => this.handleGunDrop(e));
+                item.addEventListener('dragend', (e) => this.handleGunDragEnd(e));
+            }
+
+            gunsContainer.appendChild(item);
+        });
+
+        this.updateGunsLockButton();
+    }
+
+    recordGunDeath() {
+        const profile = this.getCurrentProfile();
+        if (!profile) return;
+
+        const selectedGuns = Array.from(document.querySelectorAll('#gunList .death-cause-item input:checked'))
+            .map(cb => cb.value);
+
+        if (selectedGuns.length === 0) {
+            alert('Please select at least one gun!');
+            return;
+        }
+
+        const gunDeath = {
+            id: Date.now(),
+            guns: selectedGuns,
+            timestamp: new Date().toISOString()
+        };
+
+        if (!profile.gunDeaths) {
+            profile.gunDeaths = [];
+        }
+        profile.gunDeaths.unshift(gunDeath);
+        this.saveData();
+
+        // Clear form
+        document.querySelectorAll('#gunList .death-cause-item input:checked').forEach(cb => {
+            cb.checked = false;
+            cb.closest('.death-cause-item').classList.remove('selected');
+        });
+
+        this.showNotification('Gun death recorded');
+    }
+
+    addCustomGun() {
+        const input = document.getElementById('customGun');
+        const gun = input.value.trim();
+
+        if (!gun) {
+            alert('Please enter a gun name!');
+            return;
+        }
+
+        const profile = this.getCurrentProfile();
+        if (!profile.customGuns) {
+            profile.customGuns = [];
+        }
+        if (!profile.gunOrder) {
+            profile.gunOrder = [...this.defaultGuns, ...profile.customGuns];
+        }
+
+        if (profile.customGuns.includes(gun) || this.defaultGuns.includes(gun)) {
+            alert('This gun already exists!');
+            return;
+        }
+
+        if (profile.removedGuns && profile.removedGuns.includes(gun)) {
+            alert('This gun was previously removed. Cannot re-add with same name.');
+            return;
+        }
+
+        profile.customGuns.push(gun);
+        profile.gunOrder.push(gun);
+        this.saveData();
+        input.value = '';
+
+        this.renderGuns();
+        this.showNotification('Custom gun added');
+    }
+
+    removeGun(gun, isCustom) {
+        const message = isCustom 
+            ? `Remove "${gun}" from your gun list?\n\nThis will delete the custom gun.\nExisting records will NOT be affected.`
+            : `Hide "${gun}" from gun list?\n\nYou can restore it later.\nExisting records will NOT be affected.`;
+
+        if (!confirm(message)) {
+            return;
+        }
+
+        const profile = this.getCurrentProfile();
+        
+        if (isCustom) {
+            profile.customGuns = profile.customGuns.filter(g => g !== gun);
+        }
+        
+        if (!profile.removedGuns) {
+            profile.removedGuns = [];
+        }
+        if (!profile.removedGuns.includes(gun)) {
+            profile.removedGuns.push(gun);
+        }
+        
+        if (profile.gunOrder) {
+            profile.gunOrder = profile.gunOrder.filter(g => g !== gun);
+        }
+        
+        this.saveData();
+        this.renderGuns();
+        this.showNotification(isCustom ? 'Custom gun removed' : 'Gun hidden');
+    }
+
+    toggleGunsLock() {
+        const isLocked = localStorage.getItem('gunsLocked') !== 'false';
+        localStorage.setItem('gunsLocked', !isLocked);
+        this.renderGuns();
+        this.showNotification(!isLocked ? 'Guns locked' : 'Guns unlocked - You can now edit');
+    }
+
+    updateGunsLockButton() {
+        const lockBtn = document.getElementById('lockGunsBtn');
+        if (lockBtn) {
+            const isLocked = localStorage.getItem('gunsLocked') !== 'false';
+            const lockIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a3 3 0 0 0-3 3v2H3.5A1.5 1.5 0 0 0 2 7.5v6A1.5 1.5 0 0 0 3.5 15h9a1.5 1.5 0 0 0 1.5-1.5v-6A1.5 1.5 0 0 0 12.5 6H11V4a3 3 0 0 0-3-3zm2 5V4a2 2 0 1 0-4 0v2h4z"/></svg>`;
+            const unlockIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a3 3 0 0 1 3 3v2h1.5A1.5 1.5 0 0 1 14 7.5v6a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 13.5v-6A1.5 1.5 0 0 1 3.5 6H10V4a2 2 0 1 0-4 0v.5a.5.5 0 0 1-1 0V4a3 3 0 0 1 3-3z"/></svg>`;
+            
+            lockBtn.innerHTML = isLocked 
+                ? lockIcon + ' Locked' 
+                : unlockIcon + ' Unlocked';
+            lockBtn.classList.toggle('unlocked', !isLocked);
+            lockBtn.title = isLocked ? 'Click to unlock and edit guns' : 'Click to lock guns';
+        }
+    }
+
+    handleGunDragStart(e) {
+        this.draggedGunElement = e.target;
+        e.target.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/html', e.target.innerHTML);
+    }
+
+    handleGunDragOver(e) {
+        if (e.preventDefault) {
+            e.preventDefault();
+        }
+        e.dataTransfer.dropEffect = 'move';
+        
+        const target = e.target.closest('.death-cause-item');
+        if (target && target !== this.draggedGunElement) {
+            target.classList.add('drag-over');
+        }
+        
+        return false;
+    }
+
+    handleGunDrop(e) {
+        if (e.stopPropagation) {
+            e.stopPropagation();
+        }
+
+        const target = e.target.closest('.death-cause-item');
+        if (this.draggedGunElement !== target && target) {
+            const draggedGun = this.draggedGunElement.dataset.gun;
+            const targetGun = target.dataset.gun;
+            
+            const profile = this.getCurrentProfile();
+            const draggedIndex = profile.gunOrder.indexOf(draggedGun);
+            const targetIndex = profile.gunOrder.indexOf(targetGun);
+            
+            profile.gunOrder.splice(draggedIndex, 1);
+            const newTargetIndex = profile.gunOrder.indexOf(targetGun);
+            profile.gunOrder.splice(newTargetIndex, 0, draggedGun);
+            
+            this.saveData();
+            this.renderGuns();
+        }
+
+        target?.classList.remove('drag-over');
+        return false;
+    }
+
+    handleGunDragEnd(e) {
+        e.target.classList.remove('dragging');
+        document.querySelectorAll('#gunList .death-cause-item').forEach(item => {
+            item.classList.remove('drag-over');
+        });
+    }
+
     renderChart() {
         const canvas = document.getElementById('deathChart');
         const ctx = canvas.getContext('2d');
@@ -1332,6 +1644,37 @@ class DeathTracker {
         if (kdBtn) {
             kdBtn.addEventListener('click', () => {
                 this.recordKD();
+            });
+        }
+
+        // Gun tracking event listeners
+        const recordGunBtn = document.getElementById('recordGunDeathBtn');
+        if (recordGunBtn) {
+            recordGunBtn.addEventListener('click', () => {
+                this.recordGunDeath();
+            });
+        }
+
+        const addCustomGunBtn = document.getElementById('addCustomGun');
+        if (addCustomGunBtn) {
+            addCustomGunBtn.addEventListener('click', () => {
+                this.addCustomGun();
+            });
+        }
+
+        const customGunInput = document.getElementById('customGun');
+        if (customGunInput) {
+            customGunInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    this.addCustomGun();
+                }
+            });
+        }
+
+        const lockGunsBtn = document.getElementById('lockGunsBtn');
+        if (lockGunsBtn) {
+            lockGunsBtn.addEventListener('click', () => {
+                this.toggleGunsLock();
             });
         }
     }

@@ -142,6 +142,30 @@
             </div>
         </section>
 
+        <!-- Gun Death Entry Form -->
+        <section class="death-form-section">
+            <h2 class="section-title">Record Gun Death</h2>
+            <div class="death-form">
+                <div class="form-group">
+                    <div class="encounters-header">
+                        <label>What gun did <span id="currentHunterNameGun">the hunter</span> die to?</label>
+                        <button class="btn-lock-encounters" id="lockGunsBtn" title="Click to unlock and edit guns">🔒 Locked</button>
+                    </div>
+                    <div class="death-causes" id="gunList">
+                        <!-- Guns will be populated here -->
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="customGun">Add Custom Gun:</label>
+                    <input type="text" id="customGun" placeholder="e.g., Avtomat...">
+                    <button class="btn-secondary" id="addCustomGun">Add to List</button>
+                </div>
+
+                <button class="btn-primary" id="recordGunDeathBtn">RECORD GUN DEATH</button>
+            </div>
+        </section>
+
     </div>
 
     <!-- Modal for Adding Profile -->

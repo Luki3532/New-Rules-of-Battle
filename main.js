@@ -7,7 +7,9 @@ function createWindow() {
         height: 900,
         webPreferences: {
             nodeIntegration: false,
-            contextIsolation: true
+            contextIsolation: true,
+            enableRemoteModule: false,
+            spellcheck: false
         },
         title: 'New Rules of Battle',
         backgroundColor: '#0f0e0d',
@@ -16,7 +18,10 @@ function createWindow() {
 
     win.loadFile('index.html');
 
-    // Open DevTools in development
+    // Remove default menu to prevent keyboard shortcuts from interfering
+    win.setMenu(null);
+
+    // Open DevTools in development (uncomment to debug)
     // win.webContents.openDevTools();
 }
 
