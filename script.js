@@ -98,6 +98,16 @@ class DeathTracker {
             'Unknown'
         ];
         
+        // Templates system
+        this.templates = JSON.parse(localStorage.getItem('huntTemplates')) || [];
+        this.editingTemplateId = null; // Track which template is being edited
+        
+        // Recent selections tracking (per profile)
+        this.recentSelections = { causes: [], guns: [] };
+        
+        // Correlations for smart predictions (per profile)
+        this.correlations = { causes: {}, guns: {} };
+        
         this.init();
     }
 
@@ -140,11 +150,24 @@ class DeathTracker {
             if (!profile.removedCompounds) {
                 profile.removedCompounds = [];
             }
+            if (!profile.recentSelections) {
+                profile.recentSelections = { causes: [], guns: [] };
+            }
         });
+
+        // Load recent selections for current profile
+        const currentProfileData = this.getCurrentProfile();
+        if (currentProfileData && currentProfileData.recentSelections) {
+            this.recentSelections = currentProfileData.recentSelections;
+        }
+
+        // Calculate correlations from existing death data
+        this.calculateCorrelations();
 
         this.renderProfiles();
         this.renderQuickProfileSwitcher();
         this.renderPlaybook();
+        this.renderTemplates();
         this.renderDeathCauses();
         this.renderGuns();
         this.renderCompounds();
@@ -158,6 +181,7 @@ class DeathTracker {
         this.renderDeathCausePieChart();
         this.renderGunDeathChart();
         this.attachEventListeners();
+        this.attachKeyboardShortcuts();
     }
 
     createProfile(name) {
@@ -175,6 +199,7 @@ class DeathTracker {
             customCompounds: [],
             compoundOrder: [...this.defaultCompounds],
             removedCompounds: [],
+            recentSelections: { causes: [], guns: [] }, // Recent selections tracking
             created: new Date().toISOString()
         };
         this.profiles.push(profile);
@@ -396,61 +421,129 @@ class DeathTracker {
         const allCauses = profile.causeOrder.filter(cause => !profile.removedCauses.includes(cause));
         const customCauses = profile.customCauses || [];
 
-        allCauses.forEach((cause, index) => {
-            const isCustom = customCauses.includes(cause);
-            const item = document.createElement('div');
-            item.className = 'death-cause-item';
-            item.draggable = !this.isLocked;
-            item.dataset.cause = cause;
-            
-            if (!this.isLocked) {
-                item.classList.add('unlocked');
-            }
+        // Get recent causes (last 5 unique)
+        const recentCauses = profile.recentSelections?.causes ? 
+            [...new Set(profile.recentSelections.causes)].slice(0, 5) : [];
 
-            item.innerHTML = `
-                ${!this.isLocked ? '<div class="drag-handle" title="Drag to reorder">⋮⋮</div>' : ''}
-                <input type="checkbox" id="cause-${index}" value="${cause}">
-                <label for="cause-${index}">${cause}</label>
-                ${!this.isLocked ? `<button class="btn-remove-cause" data-cause="${cause}" title="Remove encounter">×</button>` : ''}
-            `;
-            
-            const checkbox = item.querySelector('input');
-            
-            // Make entire item clickable (not just checkbox)
-            item.addEventListener('click', (e) => {
-                // Don't toggle if clicking the remove button
-                if (e.target.classList.contains('btn-remove-cause')) return;
-                if (!this.isLocked && e.target.classList.contains('drag-handle')) return;
-                
-                checkbox.checked = !checkbox.checked;
-                if (checkbox.checked) {
-                    item.classList.add('selected');
-                } else {
-                    item.classList.remove('selected');
+        // Render recent causes first if they exist
+        if (recentCauses.length > 0) {
+            const separator = document.createElement('div');
+            separator.className = 'recent-separator';
+            separator.innerHTML = '<span>— Recently Used —</span>';
+            causesContainer.appendChild(separator);
+
+            recentCauses.forEach((cause, index) => {
+                if (!profile.removedCauses.includes(cause)) {
+                    this.renderCauseItem(cause, `recent-${index}`, customCauses.includes(cause), true);
                 }
             });
 
-            // Add delete button listener if unlocked
-            if (!this.isLocked) {
-                const deleteBtn = item.querySelector('.btn-remove-cause');
+            const allSeparator = document.createElement('div');
+            allSeparator.className = 'recent-separator';
+            allSeparator.innerHTML = '<span>— All Causes —</span>';
+            causesContainer.appendChild(allSeparator);
+        }
+
+        // Render all causes
+        allCauses.forEach((cause, index) => {
+            this.renderCauseItem(cause, index, customCauses.includes(cause), false);
+        });
+
+        // Update lock button UI
+        this.updateLockButton();
+    }
+
+    renderCauseItem(cause, index, isCustom, isRecent) {
+        const causesContainer = document.getElementById('deathCauses');
+        const item = document.createElement('div');
+        item.className = 'death-cause-item';
+        item.draggable = !this.isLocked;
+        item.dataset.cause = cause;
+        
+        if (!this.isLocked) {
+            item.classList.add('unlocked');
+        }
+        if (isRecent) {
+            item.classList.add('recent-item');
+        }
+
+        item.innerHTML = `
+            ${!this.isLocked ? '<div class="drag-handle" title="Drag to reorder">⋮⋮</div>' : ''}
+            ${isRecent ? '<span class="recent-star">⭐</span>' : ''}
+            <input type="checkbox" id="cause-${index}" value="${cause}">
+            <label for="cause-${index}">${cause}</label>
+            ${!this.isLocked ? `<button class="btn-remove-cause" data-cause="${cause}" title="Remove encounter">×</button>` : ''}
+        `;
+        
+        const checkbox = item.querySelector('input');
+        
+        // Make entire item clickable (not just checkbox)
+        item.addEventListener('click', (e) => {
+            // Don't toggle if clicking the remove button
+            if (e.target.classList.contains('btn-remove-cause')) return;
+            if (!this.isLocked && e.target.classList.contains('drag-handle')) return;
+            
+            checkbox.checked = !checkbox.checked;
+            if (checkbox.checked) {
+                item.classList.add('selected');
+            } else {
+                item.classList.remove('selected');
+            }
+
+            // Update suggestions when selection changes
+            this.updateSuggestions();
+        });
+
+        // Add delete button listener if unlocked
+        if (!this.isLocked) {
+            const deleteBtn = item.querySelector('.btn-remove-cause');
+            if (deleteBtn) {
                 deleteBtn.addEventListener('click', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     this.removeCause(cause, isCustom);
                 });
-
-                // Add drag and drop listeners
-                item.addEventListener('dragstart', (e) => this.handleDragStart(e));
-                item.addEventListener('dragover', (e) => this.handleDragOver(e));
-                item.addEventListener('drop', (e) => this.handleDrop(e));
-                item.addEventListener('dragend', (e) => this.handleDragEnd(e));
             }
 
-            causesContainer.appendChild(item);
+            // Add drag and drop listeners
+            item.addEventListener('dragstart', (e) => this.handleDragStart(e));
+            item.addEventListener('dragover', (e) => this.handleDragOver(e));
+            item.addEventListener('drop', (e) => this.handleDrop(e));
+            item.addEventListener('dragend', (e) => this.handleDragEnd(e));
+        }
+
+        causesContainer.appendChild(item);
+    }
+
+    updateSuggestions() {
+        // Get currently selected causes
+        const selectedCauses = [];
+        document.querySelectorAll('#deathCauses input[type="checkbox"]:checked').forEach(cb => {
+            selectedCauses.push(cb.value);
         });
 
-        // Update lock button UI
-        this.updateLockButton();
+        // Clear all suggestion indicators
+        document.querySelectorAll('.death-cause-item').forEach(item => {
+            item.classList.remove('suggested-item');
+            const suggestionIcon = item.querySelector('.suggestion-icon');
+            if (suggestionIcon) suggestionIcon.remove();
+        });
+
+        // Get and apply suggestions
+        const suggestions = this.getSuggestions(selectedCauses, 'causes');
+        suggestions.forEach(suggestedItem => {
+            const item = document.querySelector(`.death-cause-item[data-cause="${suggestedItem}"]`);
+            if (item && !item.querySelector('input[type="checkbox"]').checked) {
+                item.classList.add('suggested-item');
+                if (!item.querySelector('.suggestion-icon')) {
+                    const icon = document.createElement('span');
+                    icon.className = 'suggestion-icon';
+                    icon.textContent = '💡';
+                    icon.title = 'Suggested based on your selections';
+                    item.querySelector('label').prepend(icon);
+                }
+            }
+        });
     }
 
     recordDeath() {
@@ -481,6 +574,26 @@ class DeathTracker {
         profile.deaths.unshift(death);
         this.saveData();
 
+        // Track recent selections
+        if (!profile.recentSelections) {
+            profile.recentSelections = { causes: [], guns: [] };
+        }
+        
+        // Add selected causes to recent (keep last 20)
+        selectedCauses.forEach(cause => {
+            profile.recentSelections.causes = [
+                cause,
+                ...profile.recentSelections.causes.filter(c => c !== cause)
+            ].slice(0, 20);
+        });
+
+        // Save updated recent selections
+        this.recentSelections = profile.recentSelections;
+        this.saveData();
+
+        // Recalculate correlations with new death data
+        this.calculateCorrelations();
+
         // Clear form
         document.querySelectorAll('.death-cause-item input:checked').forEach(cb => {
             cb.checked = false;
@@ -492,11 +605,20 @@ class DeathTracker {
         });
         document.getElementById('deathNotes').value = '';
 
+        // Clear suggestions
+        document.querySelectorAll('.suggested-item').forEach(item => {
+            item.classList.remove('suggested-item');
+            const icon = item.querySelector('.suggestion-icon');
+            if (icon) icon.remove();
+        });
+
         // Update UI
         this.updateStats();
         this.renderChart();
         this.renderDeathCausePieChart();
         this.renderGunDeathChart();
+        this.renderDeathCauses(); // Re-render to update recent selections
+        this.renderGuns(); // Re-render to update recent selections
 
         // Show confirmation
         this.showNotification('Death recorded in the ledger');
@@ -1171,58 +1293,96 @@ class DeathTracker {
         const allGuns = profile.gunOrder.filter(gun => !profile.removedGuns.includes(gun));
         const customGuns = profile.customGuns || [];
 
-        allGuns.forEach((gun, index) => {
-            const isCustom = customGuns.includes(gun);
-            const item = document.createElement('div');
-            item.className = 'death-cause-item';
-            item.draggable = !isGunsLocked;
-            item.dataset.gun = gun;
-            
-            if (!isGunsLocked) {
-                item.classList.add('unlocked');
-            }
+        // Get recent guns (last 5 unique)
+        const recentGuns = profile.recentSelections?.guns ? 
+            [...new Set(profile.recentSelections.guns)].slice(0, 5) : [];
 
-            item.innerHTML = `
-                ${!isGunsLocked ? '<div class="drag-handle" title="Drag to reorder">⋮⋮</div>' : ''}
-                <input type="checkbox" id="gun-${index}" value="${gun}">
-                <label for="gun-${index}">${gun}</label>
-                ${!isGunsLocked ? `<button class="btn-remove-cause" data-gun="${gun}" title="Remove gun">×</button>` : ''}
-            `;
-            
-            const checkbox = item.querySelector('input');
-            
-            // Make entire item clickable
-            item.addEventListener('click', (e) => {
-                if (e.target.classList.contains('btn-remove-cause')) return;
-                if (!isGunsLocked && e.target.classList.contains('drag-handle')) return;
-                
-                checkbox.checked = !checkbox.checked;
-                if (checkbox.checked) {
-                    item.classList.add('selected');
-                } else {
-                    item.classList.remove('selected');
+        // Render recent guns first if they exist
+        if (recentGuns.length > 0) {
+            const separator = document.createElement('div');
+            separator.className = 'recent-separator';
+            separator.innerHTML = '<span>— Recently Used —</span>';
+            gunsContainer.appendChild(separator);
+
+            recentGuns.forEach((gun, index) => {
+                if (!profile.removedGuns.includes(gun)) {
+                    this.renderGunItem(gun, `recent-${index}`, customGuns.includes(gun), true, isGunsLocked);
                 }
             });
 
-            if (!isGunsLocked) {
-                const deleteBtn = item.querySelector('.btn-remove-cause');
+            const allSeparator = document.createElement('div');
+            allSeparator.className = 'recent-separator';
+            allSeparator.innerHTML = '<span>— All Guns —</span>';
+            gunsContainer.appendChild(allSeparator);
+        }
+
+        // Render all guns
+        allGuns.forEach((gun, index) => {
+            this.renderGunItem(gun, index, customGuns.includes(gun), false, isGunsLocked);
+        });
+
+        this.updateGunsLockButton();
+    }
+
+    renderGunItem(gun, index, isCustom, isRecent, isGunsLocked) {
+        const gunsContainer = document.getElementById('gunList');
+        const item = document.createElement('div');
+        item.className = 'death-cause-item';
+        item.draggable = !isGunsLocked;
+        item.dataset.gun = gun;
+        
+        if (!isGunsLocked) {
+            item.classList.add('unlocked');
+        }
+        if (isRecent) {
+            item.classList.add('recent-item');
+        }
+
+        item.innerHTML = `
+            ${!isGunsLocked ? '<div class="drag-handle" title="Drag to reorder">⋮⋮</div>' : ''}
+            ${isRecent ? '<span class="recent-star">⭐</span>' : ''}
+            <input type="checkbox" id="gun-${index}" value="${gun}">
+            <label for="gun-${index}">${gun}</label>
+            ${!isGunsLocked ? `<button class="btn-remove-cause" data-gun="${gun}" title="Remove gun">×</button>` : ''}
+        `;
+        
+        const checkbox = item.querySelector('input');
+        
+        // Make entire item clickable
+        item.addEventListener('click', (e) => {
+            if (e.target.classList.contains('btn-remove-cause')) return;
+            if (!isGunsLocked && e.target.classList.contains('drag-handle')) return;
+            
+            checkbox.checked = !checkbox.checked;
+            if (checkbox.checked) {
+                item.classList.add('selected');
+            } else {
+                item.classList.remove('selected');
+            }
+
+            // Update suggestions when selection changes
+            this.updateSuggestions();
+        });
+
+        if (!isGunsLocked) {
+            const deleteBtn = item.querySelector('.btn-remove-cause');
+            if (deleteBtn) {
                 deleteBtn.addEventListener('click', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     this.removeGun(gun, isCustom);
                 });
-
-                item.addEventListener('dragstart', (e) => this.handleGunDragStart(e));
-                item.addEventListener('dragover', (e) => this.handleGunDragOver(e));
-                item.addEventListener('drop', (e) => this.handleGunDrop(e));
-                item.addEventListener('dragend', (e) => this.handleGunDragEnd(e));
             }
 
-            gunsContainer.appendChild(item);
-        });
+            item.addEventListener('dragstart', (e) => this.handleGunDragStart(e));
+            item.addEventListener('dragover', (e) => this.handleGunDragOver(e));
+            item.addEventListener('drop', (e) => this.handleGunDrop(e));
+            item.addEventListener('dragend', (e) => this.handleGunDragEnd(e));
+        }
 
-        this.updateGunsLockButton();
+        gunsContainer.appendChild(item);
     }
+
 
     recordGunDeath() {
         const profile = this.getCurrentProfile();
@@ -1248,11 +1408,38 @@ class DeathTracker {
         profile.gunDeaths.unshift(gunDeath);
         this.saveData();
 
+        // Track recent gun selections
+        if (!profile.recentSelections) {
+            profile.recentSelections = { causes: [], guns: [] };
+        }
+        
+        // Add selected guns to recent (keep last 20)
+        selectedGuns.forEach(gun => {
+            profile.recentSelections.guns = [
+                gun,
+                ...profile.recentSelections.guns.filter(g => g !== gun)
+            ].slice(0, 20);
+        });
+
+        // Save updated recent selections
+        this.recentSelections = profile.recentSelections;
+        this.saveData();
+
         // Clear form
         document.querySelectorAll('#gunList .death-cause-item input:checked').forEach(cb => {
             cb.checked = false;
             cb.closest('.death-cause-item').classList.remove('selected');
         });
+
+        // Clear suggestions
+        document.querySelectorAll('.suggested-item').forEach(item => {
+            item.classList.remove('suggested-item');
+            const icon = item.querySelector('.suggestion-icon');
+            if (icon) icon.remove();
+        });
+
+        // Re-render to update recent selections
+        this.renderGuns();
 
         this.showNotification('Gun death recorded');
     }
@@ -2046,6 +2233,392 @@ class DeathTracker {
         localStorage.setItem('huntProfiles', JSON.stringify(this.profiles));
     }
 
+    // ===== TEMPLATES SYSTEM =====
+
+    renderTemplates() {
+        const container = document.getElementById('templatesList');
+        if (!container) return;
+
+        container.innerHTML = '';
+
+        if (this.templates.length === 0) {
+            container.innerHTML = '<p class="empty-templates">No templates saved. Select causes/guns and click 💾 Save Template</p>';
+            return;
+        }
+
+        this.templates.forEach((template, index) => {
+            const templateBtn = document.createElement('div');
+            templateBtn.className = 'template-button';
+            
+            const shortcutHint = index < 9 ? `<span class="template-shortcut">Ctrl+${index + 1}</span>` : '';
+            
+            templateBtn.innerHTML = `
+                <span class="template-name">${template.name}</span>
+                ${shortcutHint}
+                <button class="btn-template-edit" title="Edit template">✏️</button>
+                <button class="btn-template-delete" title="Delete template">×</button>
+            `;
+
+            templateBtn.querySelector('.template-name').addEventListener('click', () => {
+                this.applyTemplate(template.id);
+            });
+
+            templateBtn.querySelector('.btn-template-edit').addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.editTemplate(template.id);
+            });
+
+            templateBtn.querySelector('.btn-template-delete').addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.deleteTemplate(template.id);
+            });
+
+            container.appendChild(templateBtn);
+        });
+    }
+
+    openSaveTemplateModal() {
+        // Get currently selected causes and guns
+        const selectedCauses = [];
+        document.querySelectorAll('#deathCauses input[type="checkbox"]:checked').forEach(cb => {
+            selectedCauses.push(cb.value);
+        });
+
+        const selectedGuns = [];
+        document.querySelectorAll('#gunList input[type="checkbox"]:checked').forEach(cb => {
+            selectedGuns.push(cb.value);
+        });
+
+        // Get selected compound
+        const selectedCompound = document.querySelector('#compoundList input[type="radio"]:checked');
+        const compound = selectedCompound ? selectedCompound.value : null;
+
+        if (selectedCauses.length === 0 && selectedGuns.length === 0) {
+            alert('Please select at least one death cause or gun before saving a template!');
+            return;
+        }
+
+        // Show preview
+        const preview = document.getElementById('templatePreview');
+        let previewHTML = '<div class="template-preview-content">';
+        if (selectedCauses.length > 0) {
+            previewHTML += `<div><strong>Causes:</strong> ${selectedCauses.join(', ')}</div>`;
+        }
+        if (selectedGuns.length > 0) {
+            previewHTML += `<div><strong>Guns:</strong> ${selectedGuns.join(', ')}</div>`;
+        }
+        if (compound) {
+            previewHTML += `<div><strong>Location:</strong> ${compound}</div>`;
+        }
+        previewHTML += '</div>';
+        preview.innerHTML = previewHTML;
+
+        // Clear input if creating new template, or populate if editing
+        const nameInput = document.getElementById('templateName');
+        if (this.editingTemplateId) {
+            const template = this.templates.find(t => t.id === this.editingTemplateId);
+            nameInput.value = template ? template.name : '';
+            document.getElementById('templateModalTitle').textContent = 'Edit Template';
+        } else {
+            nameInput.value = '';
+            document.getElementById('templateModalTitle').textContent = 'Save Death Template';
+        }
+
+        document.getElementById('saveTemplateModal').classList.add('active');
+        nameInput.focus();
+    }
+
+    confirmSaveTemplate() {
+        const nameInput = document.getElementById('templateName');
+        const name = nameInput.value.trim();
+
+        if (!name) {
+            alert('Please enter a template name!');
+            return;
+        }
+
+        // Get currently selected causes and guns
+        const selectedCauses = [];
+        document.querySelectorAll('#deathCauses input[type="checkbox"]:checked').forEach(cb => {
+            selectedCauses.push(cb.value);
+        });
+
+        const selectedGuns = [];
+        document.querySelectorAll('#gunList input[type="checkbox"]:checked').forEach(cb => {
+            selectedGuns.push(cb.value);
+        });
+
+        const selectedCompound = document.querySelector('#compoundList input[type="radio"]:checked');
+        const compound = selectedCompound ? selectedCompound.value : null;
+
+        if (this.editingTemplateId) {
+            // Edit existing template
+            const template = this.templates.find(t => t.id === this.editingTemplateId);
+            if (template) {
+                template.name = name;
+                template.causes = selectedCauses;
+                template.guns = selectedGuns;
+                template.compound = compound;
+            }
+            this.showNotification(`Template "${name}" updated`);
+            this.editingTemplateId = null;
+        } else {
+            // Create new template
+            const template = {
+                id: Date.now(),
+                name: name,
+                causes: selectedCauses,
+                guns: selectedGuns,
+                compound: compound,
+                created: new Date().toISOString()
+            };
+            this.templates.push(template);
+            this.showNotification(`Template "${name}" saved`);
+        }
+
+        localStorage.setItem('huntTemplates', JSON.stringify(this.templates));
+        document.getElementById('saveTemplateModal').classList.remove('active');
+        this.renderTemplates();
+    }
+
+    applyTemplate(templateId) {
+        const template = this.templates.find(t => t.id === templateId);
+        if (!template) return;
+
+        // Uncheck all causes and guns first
+        document.querySelectorAll('#deathCauses input[type="checkbox"]').forEach(cb => {
+            cb.checked = false;
+            cb.closest('.death-cause-item')?.classList.remove('selected');
+        });
+        document.querySelectorAll('#gunList input[type="checkbox"]').forEach(cb => {
+            cb.checked = false;
+            cb.closest('.death-cause-item')?.classList.remove('selected');
+        });
+
+        // Check template causes
+        template.causes.forEach(cause => {
+            const checkbox = document.querySelector(`#deathCauses input[value="${cause}"]`);
+            if (checkbox) {
+                checkbox.checked = true;
+                checkbox.closest('.death-cause-item')?.classList.add('selected', 'template-applied');
+            }
+        });
+
+        // Check template guns
+        template.guns.forEach(gun => {
+            const checkbox = document.querySelector(`#gunList input[value="${gun}"]`);
+            if (checkbox) {
+                checkbox.checked = true;
+                checkbox.closest('.death-cause-item')?.classList.add('selected', 'template-applied');
+            }
+        });
+
+        // Select compound
+        if (template.compound) {
+            const radio = document.querySelector(`#compoundList input[value="${template.compound}"]`);
+            if (radio) {
+                radio.checked = true;
+                radio.closest('.death-cause-item')?.classList.add('selected', 'template-applied');
+            }
+        }
+
+        // Brief highlight animation
+        setTimeout(() => {
+            document.querySelectorAll('.template-applied').forEach(item => {
+                item.classList.remove('template-applied');
+            });
+        }, 1000);
+
+        this.showNotification(`Template "${template.name}" applied`);
+    }
+
+    deleteTemplate(templateId) {
+        const template = this.templates.find(t => t.id === templateId);
+        if (!template) return;
+
+        if (!confirm(`Delete template "${template.name}"?`)) {
+            return;
+        }
+
+        this.templates = this.templates.filter(t => t.id !== templateId);
+        localStorage.setItem('huntTemplates', JSON.stringify(this.templates));
+        this.renderTemplates();
+        this.showNotification(`Template "${template.name}" deleted`);
+    }
+
+    editTemplate(templateId) {
+        const template = this.templates.find(t => t.id === templateId);
+        if (!template) return;
+
+        // Apply the template first to populate selections
+        this.applyTemplate(templateId);
+        
+        // Set editing mode
+        this.editingTemplateId = templateId;
+        
+        // Open modal after a brief delay to allow template to apply
+        setTimeout(() => {
+            this.openSaveTemplateModal();
+        }, 100);
+    }
+
+    // ===== CORRELATIONS & PREDICTIONS =====
+
+    calculateCorrelations() {
+        const profile = this.getCurrentProfile();
+        if (!profile || !profile.deaths || profile.deaths.length < 3) {
+            this.correlations = { causes: {}, guns: {} };
+            return;
+        }
+
+        const correlations = { causes: {}, guns: {} };
+
+        // Calculate cause correlations
+        profile.deaths.forEach(death => {
+            death.causes.forEach(cause1 => {
+                if (!correlations.causes[cause1]) {
+                    correlations.causes[cause1] = {};
+                }
+                
+                // Check co-occurrence with other causes
+                death.causes.forEach(cause2 => {
+                    if (cause1 !== cause2) {
+                        correlations.causes[cause1][cause2] = (correlations.causes[cause1][cause2] || 0) + 1;
+                    }
+                });
+
+                // Check co-occurrence with guns
+                death.guns?.forEach(gun => {
+                    if (!correlations.causes[cause1][gun]) {
+                        correlations.causes[cause1][gun] = 0;
+                    }
+                    correlations.causes[cause1][gun]++;
+                });
+            });
+        });
+
+        // Normalize correlations to percentages
+        Object.keys(correlations.causes).forEach(cause => {
+            const total = profile.deaths.filter(d => d.causes.includes(cause)).length;
+            Object.keys(correlations.causes[cause]).forEach(item => {
+                correlations.causes[cause][item] = correlations.causes[cause][item] / total;
+            });
+        });
+
+        this.correlations = correlations;
+    }
+
+    getSuggestions(selectedItems, type = 'causes') {
+        if (selectedItems.length === 0 || Object.keys(this.correlations.causes).length === 0) {
+            return [];
+        }
+
+        const suggestions = {};
+        const threshold = 0.4;
+
+        selectedItems.forEach(item => {
+            if (this.correlations.causes[item]) {
+                Object.entries(this.correlations.causes[item]).forEach(([correlatedItem, score]) => {
+                    if (score >= threshold && !selectedItems.includes(correlatedItem)) {
+                        suggestions[correlatedItem] = Math.max(suggestions[correlatedItem] || 0, score);
+                    }
+                });
+            }
+        });
+
+        // Return top 3 suggestions sorted by score
+        return Object.entries(suggestions)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([item]) => item);
+    }
+
+    // ===== KEYBOARD SHORTCUTS =====
+
+    attachKeyboardShortcuts() {
+        document.addEventListener('keydown', (e) => {
+            // Don't trigger shortcuts when typing in input fields
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                return;
+            }
+
+            // Ctrl+Enter - Record Death
+            if (e.ctrlKey && e.key === 'Enter') {
+                e.preventDefault();
+                const recordBtn = document.getElementById('recordDeathBtn');
+                if (recordBtn) recordBtn.click();
+                return;
+            }
+
+            // Esc - Clear all selections
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                this.clearAllSelections();
+                return;
+            }
+
+            // Ctrl+1-9 - Apply template
+            if (e.ctrlKey && e.key >= '1' && e.key <= '9') {
+                e.preventDefault();
+                const index = parseInt(e.key) - 1;
+                if (this.templates[index]) {
+                    this.applyTemplate(this.templates[index].id);
+                }
+                return;
+            }
+
+            // 1-5 - Jump to sections
+            if (!e.ctrlKey && !e.shiftKey && !e.altKey && e.key >= '1' && e.key <= '5') {
+                e.preventDefault();
+                const sections = [
+                    '.playbook-display',      // 1
+                    '.stats-section',         // 2
+                    '.death-form-section',    // 3
+                    '.analytics-section',     // 4
+                    '.death-ledger-section'   // 5
+                ];
+                
+                const sectionIndex = parseInt(e.key) - 1;
+                const section = document.querySelector(sections[sectionIndex]);
+                if (section) {
+                    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    section.classList.add('section-highlight');
+                    setTimeout(() => section.classList.remove('section-highlight'), 500);
+                }
+                return;
+            }
+        });
+    }
+
+    clearAllSelections() {
+        // Clear death causes
+        document.querySelectorAll('#deathCauses input[type="checkbox"]').forEach(cb => {
+            cb.checked = false;
+            cb.closest('.death-cause-item')?.classList.remove('selected');
+        });
+
+        // Clear guns
+        document.querySelectorAll('#gunList input[type="checkbox"]').forEach(cb => {
+            cb.checked = false;
+            cb.closest('.death-cause-item')?.classList.remove('selected');
+        });
+
+        // Clear compound
+        document.querySelectorAll('#compoundList input[type="radio"]').forEach(radio => {
+            radio.checked = false;
+            radio.closest('.death-cause-item')?.classList.remove('selected');
+        });
+
+        // Clear K/D and notes
+        const kdInput = document.getElementById('kdInput');
+        if (kdInput) kdInput.value = '';
+        
+        const notesInput = document.getElementById('deathNotes');
+        if (notesInput) notesInput.value = '';
+
+        this.showNotification('All selections cleared');
+    }
+
     attachEventListeners() {
         // Add profile button
         document.getElementById('addProfileBtn').addEventListener('click', () => {
@@ -2228,6 +2801,38 @@ class DeathTracker {
                 const content = document.getElementById('compoundsContent');
                 compoundsHeader.classList.toggle('collapsed');
                 content.classList.toggle('collapsed');
+            });
+        }
+
+        // Template event listeners
+        const saveTemplateBtn = document.getElementById('saveTemplateBtn');
+        if (saveTemplateBtn) {
+            saveTemplateBtn.addEventListener('click', () => {
+                this.openSaveTemplateModal();
+            });
+        }
+
+        const confirmSaveTemplateBtn = document.getElementById('confirmSaveTemplateBtn');
+        if (confirmSaveTemplateBtn) {
+            confirmSaveTemplateBtn.addEventListener('click', () => {
+                this.confirmSaveTemplate();
+            });
+        }
+
+        const cancelSaveTemplateBtn = document.getElementById('cancelSaveTemplateBtn');
+        if (cancelSaveTemplateBtn) {
+            cancelSaveTemplateBtn.addEventListener('click', () => {
+                document.getElementById('saveTemplateModal').classList.remove('active');
+                this.editingTemplateId = null;
+            });
+        }
+
+        const templateNameInput = document.getElementById('templateName');
+        if (templateNameInput) {
+            templateNameInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    confirmSaveTemplateBtn.click();
+                }
             });
         }
     }

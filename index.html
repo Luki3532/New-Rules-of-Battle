@@ -145,6 +145,22 @@
         <section class="death-form-section">
             <h2 class="section-title">Record a Death</h2>
             <div class="death-form">
+                <!-- Death Templates -->
+                <div class="form-group" id="templatesSection">
+                    <div class="templates-header">
+                        <label>Quick Templates</label>
+                        <button class="btn-secondary btn-small" id="saveTemplateBtn" title="Save current selection as template">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="vertical-align: middle; margin-right: 4px;">
+                                <path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/>
+                            </svg>
+                            Save Template
+                        </button>
+                    </div>
+                    <div class="templates-list" id="templatesList">
+                        <!-- Templates will be populated here -->
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <div class="encounters-header">
                         <label>How did <span id="currentHunterName">the hunter</span> meet their end?</label>
@@ -309,6 +325,29 @@
     <!-- Quick Profile Switcher (Fixed Bottom Left) -->
     <div class="quick-profile-switcher" id="quickProfileSwitcher">
         <!-- Profile icons will be added here by JavaScript -->
+    </div>
+
+    <!-- Keyboard Shortcuts Display (Fixed Bottom Right) -->
+    <div class="keyboard-shortcuts-display" id="keyboardShortcuts">
+        <div class="shortcut-item"><kbd>Ctrl+Enter</kbd> Record Death</div>
+        <div class="shortcut-item"><kbd>1-5</kbd> Jump to Section</div>
+        <div class="shortcut-item"><kbd>Ctrl+1-9</kbd> Apply Template</div>
+        <div class="shortcut-item"><kbd>Esc</kbd> Clear All</div>
+    </div>
+
+    <!-- Save/Edit Template Modal -->
+    <div class="modal" id="saveTemplateModal">
+        <div class="modal-content">
+            <h3 id="templateModalTitle">Save Death Template</h3>
+            <p>Give this template a memorable name</p>
+            <div class="template-preview" id="templatePreview"></div>
+            <label for="templateName">Template Name:</label>
+            <input type="text" id="templateName" placeholder="e.g., Sniper Death, Rushed Compound..." maxlength="30">
+            <div class="modal-buttons">
+                <button class="btn-primary" id="confirmSaveTemplateBtn">Save Template</button>
+                <button class="btn-secondary" id="cancelSaveTemplateBtn">Cancel</button>
+            </div>
+        </div>
     </div>
 
     <script src="script.js"></script>
