@@ -15,6 +15,11 @@
     <div class="container">
         <!-- Header -->
         <header class="header">
+            <button class="playbook-icon" id="playbookBtn" title="Open Playbook">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M6 2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm2 4v2h8V6H8zm0 4v2h8v-2H8zm0 4v2h5v-2H8z"/>
+                </svg>
+            </button>
             <div class="skull-divider"></div>
             <h1 class="title">NEW RULES OF BATTLE</h1>
             <p class="subtitle">Death Ledger & Statistics</p>
@@ -62,6 +67,14 @@
             </div>
         </section>
 
+        <!-- Playbook / Commandments -->
+        <section class="playbook-display" id="playbookDisplay">
+            <h2 class="section-title">Hunter's Commandments</h2>
+            <ol class="commandments-list" id="commandmentsList">
+                <!-- Commandments will be populated here -->
+            </ol>
+        </section>
+
         <!-- Death Chart -->
         <section class="chart-section" id="deathChartSection" style="display: none;">
             <h2 class="section-title">Death Timeline</h2>
@@ -83,6 +96,21 @@
             </div>
             
             <canvas id="deathChart"></canvas>
+        </section>
+
+        <!-- Analytics Charts -->
+        <section class="chart-section">
+            <h2 class="section-title">Death Analytics</h2>
+            <div class="analytics-grid">
+                <div class="analytics-chart">
+                    <h3>Death Causes Breakdown</h3>
+                    <canvas id="deathCausePieChart"></canvas>
+                </div>
+                <div class="analytics-chart">
+                    <h3>Gun Deaths Heatmap</h3>
+                    <canvas id="gunDeathChart"></canvas>
+                </div>
+            </div>
         </section>
 
         <!-- K/D Timeline -->
@@ -131,6 +159,26 @@
                     <label for="customCause">Add Custom Encounter:</label>
                     <input type="text" id="customCause" placeholder="e.g., Ambushed by Immolator...">
                     <button class="btn-secondary" id="addCustomCause">Add to List</button>
+                </div>
+
+                <div class="form-group">
+                    <div class="encounters-header collapsible-header" id="compoundsHeader">
+                        <div class="header-left">
+                            <span class="toggle-icon">▼</span>
+                            <label>Where did this happen?</label>
+                        </div>
+                        <button class="btn-lock-encounters" id="lockCompoundsBtn" title="Click to unlock and edit compounds">🔒 Locked</button>
+                    </div>
+                    <div class="collapsible-content" id="compoundsContent">
+                        <div class="death-causes" id="compoundList">
+                            <!-- Compounds will be populated here -->
+                        </div>
+                        <div class="form-group" style="margin-top: 15px;">
+                            <label for="customCompound">Add Custom Location:</label>
+                            <input type="text" id="customCompound" placeholder="e.g., Custom location...">
+                            <button class="btn-secondary" id="addCustomCompound">Add to List</button>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -200,6 +248,60 @@
             <div class="modal-buttons">
                 <button class="btn-danger" id="confirmDeleteBtn">Delete</button>
                 <button class="btn-secondary" id="cancelDeleteBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Playbook Modal -->
+    <div class="modal" id="playbookModal">
+        <div class="modal-content playbook-modal-content">
+            <h3>Hunter's Commandments</h3>
+            <p class="modal-subtitle">Your personal rules for survival in the Bayou</p>
+            <div class="commandments-editor">
+                <div class="commandment-input-group">
+                    <span class="commandment-number">1.</span>
+                    <input type="text" id="commandment1" placeholder="First commandment..." maxlength="100">
+                </div>
+                <div class="commandment-input-group">
+                    <span class="commandment-number">2.</span>
+                    <input type="text" id="commandment2" placeholder="Second commandment..." maxlength="100">
+                </div>
+                <div class="commandment-input-group">
+                    <span class="commandment-number">3.</span>
+                    <input type="text" id="commandment3" placeholder="Third commandment..." maxlength="100">
+                </div>
+                <div class="commandment-input-group">
+                    <span class="commandment-number">4.</span>
+                    <input type="text" id="commandment4" placeholder="Fourth commandment..." maxlength="100">
+                </div>
+                <div class="commandment-input-group">
+                    <span class="commandment-number">5.</span>
+                    <input type="text" id="commandment5" placeholder="Fifth commandment..." maxlength="100">
+                </div>
+                <div class="commandment-input-group">
+                    <span class="commandment-number">6.</span>
+                    <input type="text" id="commandment6" placeholder="Sixth commandment..." maxlength="100">
+                </div>
+                <div class="commandment-input-group">
+                    <span class="commandment-number">7.</span>
+                    <input type="text" id="commandment7" placeholder="Seventh commandment..." maxlength="100">
+                </div>
+                <div class="commandment-input-group">
+                    <span class="commandment-number">8.</span>
+                    <input type="text" id="commandment8" placeholder="Eighth commandment..." maxlength="100">
+                </div>
+                <div class="commandment-input-group">
+                    <span class="commandment-number">9.</span>
+                    <input type="text" id="commandment9" placeholder="Ninth commandment..." maxlength="100">
+                </div>
+                <div class="commandment-input-group">
+                    <span class="commandment-number">10.</span>
+                    <input type="text" id="commandment10" placeholder="Tenth commandment..." maxlength="100">
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn-primary" id="savePlaybookBtn">Save Commandments</button>
+                <button class="btn-secondary" id="cancelPlaybookBtn">Cancel</button>
             </div>
         </div>
     </div>

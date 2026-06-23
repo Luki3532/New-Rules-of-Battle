@@ -36,7 +36,41 @@ class DeathTracker {
             'pinched',
             'sniped',
             'close quarters',
-            'medium range'
+            'medium range',
+            'day time',
+            'night time'
+        ];
+        this.defaultCompounds = [
+            'Alain & Son Fish',
+            'Alice Farm',
+            'Blanchett Graves',
+            'Blanc Brinery',
+            'Chapel of Madonna Noire',
+            'Cyprus Huts',
+            'Darrow Livestock',
+            'Davant Ranch',
+            'Wolfshead Arsenal',
+            'Fort Bolden',
+            'Godard Docks',
+            'Healing Waters Church',
+            'Hemlock & Hide',
+            'Iron Works',
+            'Kingsnake Mine',
+            'Lawson Station',
+            'Lockbay Docks',
+            'Lower DeSalle',
+            'Lumber Mill',
+            'Maw Battery',
+            'Nicholls Prison',
+            'Pitching Crematorium',
+            'Port Reeker',
+            'Reynard Mill & Lumber',
+            'Salter\'s Pork',
+            'Scupper Lake',
+            'Stillwater Bend',
+            'The Windy Run',
+            'Sweetbell Flour Mill',
+            'Wolfshead Arsenal'
         ];
         this.defaultGuns = [
             'Winfield',
@@ -97,12 +131,23 @@ class DeathTracker {
             if (!profile.removedGuns) {
                 profile.removedGuns = [];
             }
+            if (!profile.customCompounds) {
+                profile.customCompounds = [];
+            }
+            if (!profile.compoundOrder) {
+                profile.compoundOrder = [...this.defaultCompounds];
+            }
+            if (!profile.removedCompounds) {
+                profile.removedCompounds = [];
+            }
         });
 
         this.renderProfiles();
         this.renderQuickProfileSwitcher();
+        this.renderPlaybook();
         this.renderDeathCauses();
         this.renderGuns();
+        this.renderCompounds();
         this.updateStats();
         this.renderDeathCauseToggles();
         this.renderProfileCompare();
@@ -110,6 +155,8 @@ class DeathTracker {
         this.updateChartVisibility();
         this.renderChart();
         this.renderKDChart();
+        this.renderDeathCausePieChart();
+        this.renderGunDeathChart();
         this.attachEventListeners();
     }
 
@@ -125,6 +172,9 @@ class DeathTracker {
             customGuns: [],
             gunOrder: [...this.defaultGuns],
             removedGuns: [],
+            customCompounds: [],
+            compoundOrder: [...this.defaultCompounds],
+            removedCompounds: [],
             created: new Date().toISOString()
         };
         this.profiles.push(profile);
@@ -222,12 +272,15 @@ class DeathTracker {
         this.renderQuickProfileSwitcher();
         this.renderDeathCauses();
         this.renderGuns();
+        this.renderCompounds();
         this.updateStats();
         this.updateChartVisibility();
         this.renderProfileCompare();
         this.renderKDProfileCompare();
         this.renderChart();
         this.renderKDChart();
+        this.renderDeathCausePieChart();
+        this.renderGunDeathChart();
     }
 
     deleteProfile(profileName) {
@@ -412,11 +465,15 @@ class DeathTracker {
             return;
         }
 
+        const selectedCompound = document.querySelector('#compoundList .death-cause-item input:checked');
+        const compound = selectedCompound ? selectedCompound.value : null;
+
         const notes = document.getElementById('deathNotes').value.trim();
 
         const death = {
             id: Date.now(),
             causes: selectedCauses,
+            compound: compound,
             notes: notes,
             timestamp: new Date().toISOString()
         };
@@ -429,11 +486,17 @@ class DeathTracker {
             cb.checked = false;
             cb.closest('.death-cause-item').classList.remove('selected');
         });
+        document.querySelectorAll('#compoundList .death-cause-item input:checked').forEach(cb => {
+            cb.checked = false;
+            cb.closest('.death-cause-item').classList.remove('selected');
+        });
         document.getElementById('deathNotes').value = '';
 
         // Update UI
         this.updateStats();
         this.renderChart();
+        this.renderDeathCausePieChart();
+        this.renderGunDeathChart();
 
         // Show confirmation
         this.showNotification('Death recorded in the ledger');
@@ -1337,6 +1400,435 @@ class DeathTracker {
         });
     }
 
+    // ===== PLAYBOOK METHODS =====
+
+    renderPlaybook() {
+        const container = document.getElementById('commandmentsList');
+        if (!container) return;
+
+        const playbook = JSON.parse(localStorage.getItem('huntPlaybook')) || [];
+        container.innerHTML = '';
+
+        if (playbook.length === 0 || playbook.every(cmd => !cmd)) {
+            container.innerHTML = '<li class="empty-commandment">No commandments set. Click the book icon to add your rules.</li>';
+            return;
+        }
+
+        playbook.forEach((commandment, index) => {
+            if (commandment && commandment.trim()) {
+                const li = document.createElement('li');
+                li.textContent = commandment;
+                container.appendChild(li);
+            }
+        });
+    }
+
+    savePlaybook() {
+        const playbook = [];
+        for (let i = 1; i <= 10; i++) {
+            const input = document.getElementById(`commandment${i}`);
+            playbook.push(input ? input.value.trim() : '');
+        }
+        localStorage.setItem('huntPlaybook', JSON.stringify(playbook));
+        this.renderPlaybook();
+        this.showNotification('Commandments saved');
+    }
+
+    openPlaybook() {
+        const playbook = JSON.parse(localStorage.getItem('huntPlaybook')) || [];
+        for (let i = 1; i <= 10; i++) {
+            const input = document.getElementById(`commandment${i}`);
+            if (input) {
+                input.value = playbook[i - 1] || '';
+            }
+        }
+        document.getElementById('playbookModal').classList.add('active');
+        document.getElementById('commandment1')?.focus();
+    }
+
+    // ===== COMPOUND TRACKING METHODS =====
+
+    renderCompounds() {
+        const compoundsContainer = document.getElementById('compoundList');
+        if (!compoundsContainer) return;
+        
+        compoundsContainer.innerHTML = '';
+
+        const profile = this.getCurrentProfile();
+        if (!profile.compoundOrder) {
+            profile.compoundOrder = [...this.defaultCompounds, ...(profile.customCompounds || [])];
+        }
+        if (!profile.removedCompounds) {
+            profile.removedCompounds = [];
+        }
+
+        const isCompoundsLocked = localStorage.getItem('compoundsLocked') !== 'false';
+        const allCompounds = profile.compoundOrder.filter(compound => !profile.removedCompounds.includes(compound));
+        const customCompounds = profile.customCompounds || [];
+
+        allCompounds.forEach((compound, index) => {
+            const isCustom = customCompounds.includes(compound);
+            const item = document.createElement('div');
+            item.className = 'death-cause-item';
+            item.draggable = !isCompoundsLocked;
+            item.dataset.compound = compound;
+            
+            if (!isCompoundsLocked) {
+                item.classList.add('unlocked');
+            }
+
+            // Use radio buttons for single selection
+            item.innerHTML = `
+                ${!isCompoundsLocked ? '<div class="drag-handle" title="Drag to reorder">⋮⋮</div>' : ''}
+                <input type="radio" name="compound" id="compound-${index}" value="${compound}">
+                <label for="compound-${index}">${compound}</label>
+                ${!isCompoundsLocked ? `<button class="btn-remove-cause" data-compound="${compound}" title="Remove compound">×</button>` : ''}
+            `;
+            
+            const radio = item.querySelector('input');
+            
+            // Make entire item clickable
+            item.addEventListener('click', (e) => {
+                if (e.target.classList.contains('btn-remove-cause')) return;
+                if (!isCompoundsLocked && e.target.classList.contains('drag-handle')) return;
+                
+                radio.checked = true;
+                // Remove selected class from all items
+                document.querySelectorAll('#compoundList .death-cause-item').forEach(i => i.classList.remove('selected'));
+                // Add selected class to this item
+                item.classList.add('selected');
+            });
+
+            if (!isCompoundsLocked) {
+                const deleteBtn = item.querySelector('.btn-remove-cause');
+                deleteBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.removeCompound(compound, isCustom);
+                });
+
+                item.addEventListener('dragstart', (e) => this.handleCompoundDragStart(e));
+                item.addEventListener('dragover', (e) => this.handleCompoundDragOver(e));
+                item.addEventListener('dragdrop', (e) => this.handleCompoundDrop(e));
+                item.addEventListener('dragend', (e) => this.handleCompoundDragEnd(e));
+            }
+
+            compoundsContainer.appendChild(item);
+        });
+
+        this.updateCompoundsLockButton();
+    }
+
+    addCustomCompound() {
+        const input = document.getElementById('customCompound');
+        const compound = input.value.trim();
+
+        if (!compound) {
+            alert('Please enter a location name!');
+            return;
+        }
+
+        const profile = this.getCurrentProfile();
+        if (!profile.customCompounds) {
+            profile.customCompounds = [];
+        }
+        if (!profile.compoundOrder) {
+            profile.compoundOrder = [...this.defaultCompounds, ...profile.customCompounds];
+        }
+
+        if (profile.customCompounds.includes(compound) || this.defaultCompounds.includes(compound)) {
+            alert('This location already exists!');
+            return;
+        }
+
+        if (profile.removedCompounds && profile.removedCompounds.includes(compound)) {
+            alert('This location was previously removed. Cannot re-add with same name.');
+            return;
+        }
+
+        profile.customCompounds.push(compound);
+        profile.compoundOrder.push(compound);
+        this.saveData();
+        input.value = '';
+
+        this.renderCompounds();
+        this.showNotification('Custom location added');
+    }
+
+    removeCompound(compound, isCustom) {
+        const message = isCustom 
+            ? `Remove "${compound}" from your locations?\n\nThis will delete the custom location.\nExisting records will NOT be affected.`
+            : `Hide "${compound}" from locations?\n\nYou can restore it later.\nExisting records will NOT be affected.`;
+
+        if (!confirm(message)) {
+            return;
+        }
+
+        const profile = this.getCurrentProfile();
+        
+        if (isCustom) {
+            profile.customCompounds = profile.customCompounds.filter(c => c !== compound);
+        }
+        
+        if (!profile.removedCompounds) {
+            profile.removedCompounds = [];
+        }
+        if (!profile.removedCompounds.includes(compound)) {
+            profile.removedCompounds.push(compound);
+        }
+        
+        if (profile.compoundOrder) {
+            profile.compoundOrder = profile.compoundOrder.filter(c => c !== compound);
+        }
+        
+        this.saveData();
+        this.renderCompounds();
+        this.showNotification(isCustom ? 'Custom location removed' : 'Location hidden');
+    }
+
+    toggleCompoundsLock() {
+        const isLocked = localStorage.getItem('compoundsLocked') !== 'false';
+        localStorage.setItem('compoundsLocked', !isLocked);
+        this.renderCompounds();
+        this.showNotification(!isLocked ? 'Locations locked' : 'Locations unlocked - You can now edit');
+    }
+
+    updateCompoundsLockButton() {
+        const lockBtn = document.getElementById('lockCompoundsBtn');
+        if (lockBtn) {
+            const isLocked = localStorage.getItem('compoundsLocked') !== 'false';
+            const lockIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a3 3 0 0 0-3 3v2H3.5A1.5 1.5 0 0 0 2 7.5v6A1.5 1.5 0 0 0 3.5 15h9a1.5 1.5 0 0 0 1.5-1.5v-6A1.5 1.5 0 0 0 12.5 6H11V4a3 3 0 0 0-3-3zm2 5V4a2 2 0 1 0-4 0v2h4z"/></svg>`;
+            const unlockIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a3 3 0 0 1 3 3v2h1.5A1.5 1.5 0 0 1 14 7.5v6a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 13.5v-6A1.5 1.5 0 0 1 3.5 6H10V4a2 2 0 1 0-4 0v.5a.5.5 0 0 1-1 0V4a3 3 0 0 1 3-3z"/></svg>`;
+            
+            lockBtn.innerHTML = isLocked 
+                ? lockIcon + ' Locked' 
+                : unlockIcon + ' Unlocked';
+            lockBtn.classList.toggle('unlocked', !isLocked);
+            lockBtn.title = isLocked ? 'Click to unlock and edit locations' : 'Click to lock locations';
+        }
+    }
+
+    handleCompoundDragStart(e) {
+        this.draggedCompoundElement = e.target;
+        e.target.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/html', e.target.innerHTML);
+    }
+
+    handleCompoundDragOver(e) {
+        if (e.preventDefault) {
+            e.preventDefault();
+        }
+        e.dataTransfer.dropEffect = 'move';
+        
+        const target = e.target.closest('.death-cause-item');
+        if (target && target !== this.draggedCompoundElement) {
+            target.classList.add('drag-over');
+        }
+        
+        return false;
+    }
+
+    handleCompoundDrop(e) {
+        if (e.stopPropagation) {
+            e.stopPropagation();
+        }
+
+        const target = e.target.closest('.death-cause-item');
+        if (this.draggedCompoundElement !== target && target) {
+            const draggedCompound = this.draggedCompoundElement.dataset.compound;
+            const targetCompound = target.dataset.compound;
+            
+            const profile = this.getCurrentProfile();
+            const draggedIndex = profile.compoundOrder.indexOf(draggedCompound);
+            const targetIndex = profile.compoundOrder.indexOf(targetCompound);
+            
+            profile.compoundOrder.splice(draggedIndex, 1);
+            const newTargetIndex = profile.compoundOrder.indexOf(targetCompound);
+            profile.compoundOrder.splice(newTargetIndex, 0, draggedCompound);
+            
+            this.saveData();
+            this.renderCompounds();
+        }
+
+        target?.classList.remove('drag-over');
+        return false;
+    }
+
+    handleCompoundDragEnd(e) {
+        e.target.classList.remove('dragging');
+        document.querySelectorAll('#compoundList .death-cause-item').forEach(item => {
+            item.classList.remove('drag-over');
+        });
+    }
+
+    // ===== ANALYTICS CHARTS =====
+
+    renderDeathCausePieChart() {
+        const canvas = document.getElementById('deathCausePieChart');
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        const profile = this.getCurrentProfile();
+        if (!profile || !profile.deaths || profile.deaths.length === 0) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#6b5d52';
+            ctx.font = '14px Almendra';
+            ctx.textAlign = 'center';
+            ctx.fillText('No deaths recorded yet', canvas.width / 2, canvas.height / 2);
+            return;
+        }
+
+        // Set canvas size
+        canvas.width = canvas.offsetWidth;
+        canvas.height = 350;
+
+        // Count death causes
+        const causeCounts = {};
+        profile.deaths.forEach(death => {
+            death.causes.forEach(cause => {
+                causeCounts[cause] = (causeCounts[cause] || 0) + 1;
+            });
+        });
+
+        const sortedCauses = Object.entries(causeCounts).sort((a, b) => b[1] - a[1]);
+        const total = sortedCauses.reduce((sum, [_, count]) => sum + count, 0);
+
+        // Colors
+        const colors = [
+            '#8b2e1f', '#d4af37', '#6b5d52', '#9b7653', '#c17735',
+            '#734222', '#8f5a3c', '#a0826d', '#5c4033', '#6d4c41'
+        ];
+
+        // Draw pie chart
+        const centerX = canvas.width / 2;
+        const centerY = 160;
+        const radius = 120;
+        let currentAngle = -Math.PI / 2;
+
+        sortedCauses.forEach(([cause, count], index) => {
+            const sliceAngle = (count / total) * 2 * Math.PI;
+            const color = colors[index % colors.length];
+
+            // Draw slice
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.arc(centerX, centerY, radius, currentAngle, currentAngle + sliceAngle);
+            ctx.closePath();
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.strokeStyle = '#0f0e0d';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            currentAngle += sliceAngle;
+        });
+
+        // Draw legend
+        const legendX = 20;
+        let legendY = 300;
+        ctx.font = '12px Almendra';
+        ctx.textAlign = 'left';
+
+        sortedCauses.slice(0, 5).forEach(([cause, count], index) => {
+            const percentage = ((count / total) * 100).toFixed(1);
+            const color = colors[index % colors.length];
+
+            // Color box
+            ctx.fillStyle = color;
+            ctx.fillRect(legendX, legendY - 10, 15, 15);
+            ctx.strokeStyle = '#d4af37';
+            ctx.strokeRect(legendX, legendY - 10, 15, 15);
+
+            // Text
+            ctx.fillStyle = '#e8dcc4';
+            const text = `${cause}: ${count} (${percentage}%)`;
+            const maxLength = 35;
+            const displayText = text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+            ctx.fillText(displayText, legendX + 20, legendY);
+
+            legendY += 20;
+        });
+    }
+
+    renderGunDeathChart() {
+        const canvas = document.getElementById('gunDeathChart');
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        const profile = this.getCurrentProfile();
+        if (!profile || !profile.gunDeaths || profile.gunDeaths.length === 0) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#6b5d52';
+            ctx.font = '14px Almendra';
+            ctx.textAlign = 'center';
+            ctx.fillText('No gun deaths recorded yet', canvas.width / 2, canvas.height / 2);
+            return;
+        }
+
+        // Set canvas size
+        canvas.width = canvas.offsetWidth;
+        canvas.height = 350;
+
+        // Count gun deaths
+        const gunCounts = {};
+        profile.gunDeaths.forEach(gunDeath => {
+            gunDeath.guns.forEach(gun => {
+                gunCounts[gun] = (gunCounts[gun] || 0) + 1;
+            });
+        });
+
+        const sortedGuns = Object.entries(gunCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+        if (sortedGuns.length === 0) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#6b5d52';
+            ctx.font = '14px Almendra';
+            ctx.textAlign = 'center';
+            ctx.fillText('No gun deaths recorded yet', canvas.width / 2, canvas.height / 2);
+            return;
+        }
+
+        const maxCount = sortedGuns[0][1];
+        const barHeight = 25;
+        const barSpacing = 5;
+        const leftMargin = 120;
+        const maxBarWidth = canvas.width - leftMargin - 60;
+
+        ctx.font = '12px Almendra';
+
+        sortedGuns.forEach(([gun, count], index) => {
+            const y = 20 + index * (barHeight + barSpacing);
+            const barWidth = (count / maxCount) * maxBarWidth;
+
+            // Gradient color based on count
+            const intensity = count / maxCount;
+            const r = Math.floor(139 * intensity + 107 * (1 - intensity));
+            const g = Math.floor(46 * intensity + 93 * (1 - intensity));
+            const b = Math.floor(31 * intensity + 82 * (1 - intensity));
+
+            // Draw bar
+            ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+            ctx.fillRect(leftMargin, y, barWidth, barHeight);
+            ctx.strokeStyle = '#d4af37';
+            ctx.strokeRect(leftMargin, y, barWidth, barHeight);
+
+            // Gun name (left)
+            ctx.fillStyle = '#e8dcc4';
+            ctx.textAlign = 'right';
+            ctx.fillText(gun, leftMargin - 10, y + barHeight / 2 + 4);
+
+            // Count (on bar or after)
+            ctx.textAlign = 'left';
+            ctx.fillStyle = '#fff';
+            if (barWidth > 30) {
+                ctx.fillText(count, leftMargin + 5, y + barHeight / 2 + 4);
+            } else {
+                ctx.fillStyle = '#e8dcc4';
+                ctx.fillText(count, leftMargin + barWidth + 5, y + barHeight / 2 + 4);
+            }
+        });
+    }
+
     renderChart() {
         const canvas = document.getElementById('deathChart');
         const ctx = canvas.getContext('2d');
@@ -1675,6 +2167,67 @@ class DeathTracker {
         if (lockGunsBtn) {
             lockGunsBtn.addEventListener('click', () => {
                 this.toggleGunsLock();
+            });
+        }
+
+        // Playbook event listeners
+        const playbookBtn = document.getElementById('playbookBtn');
+        if (playbookBtn) {
+            playbookBtn.addEventListener('click', () => {
+                this.openPlaybook();
+            });
+        }
+
+        const savePlaybookBtn = document.getElementById('savePlaybookBtn');
+        if (savePlaybookBtn) {
+            savePlaybookBtn.addEventListener('click', () => {
+                this.savePlaybook();
+                document.getElementById('playbookModal').classList.remove('active');
+            });
+        }
+
+        const cancelPlaybookBtn = document.getElementById('cancelPlaybookBtn');
+        if (cancelPlaybookBtn) {
+            cancelPlaybookBtn.addEventListener('click', () => {
+                document.getElementById('playbookModal').classList.remove('active');
+            });
+        }
+
+        // Compound tracking event listeners
+        const addCustomCompoundBtn = document.getElementById('addCustomCompound');
+        if (addCustomCompoundBtn) {
+            addCustomCompoundBtn.addEventListener('click', () => {
+                this.addCustomCompound();
+            });
+        }
+
+        const customCompoundInput = document.getElementById('customCompound');
+        if (customCompoundInput) {
+            customCompoundInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    this.addCustomCompound();
+                }
+            });
+        }
+
+        const lockCompoundsBtn = document.getElementById('lockCompoundsBtn');
+        if (lockCompoundsBtn) {
+            lockCompoundsBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent triggering collapse
+                this.toggleCompoundsLock();
+            });
+        }
+
+        // Collapsible compounds section
+        const compoundsHeader = document.getElementById('compoundsHeader');
+        if (compoundsHeader) {
+            compoundsHeader.addEventListener('click', (e) => {
+                // Don't toggle if clicking the lock button
+                if (e.target.closest('.btn-lock-encounters')) return;
+                
+                const content = document.getElementById('compoundsContent');
+                compoundsHeader.classList.toggle('collapsed');
+                content.classList.toggle('collapsed');
             });
         }
     }
